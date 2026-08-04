@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 from majiecode.config import ConfigError, load_config
@@ -19,7 +20,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         prog="majiecode", description="终端 AI 编程助手（交互式对话）"
     )
     parser.add_argument(
-        "--config", default="config.yaml", help="YAML 配置文件路径（默认 config.yaml）"
+        "--config",
+        default=None,
+        help="YAML 配置文件路径（默认取 MAJIECODE_CONFIG 环境变量，否则当前目录 config.yaml）",
     )
     parser.add_argument(
         "--provider", default=None, help="临时指定使用的供应商 name（覆盖 default）"
@@ -31,9 +34,12 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     tui = Tui()
 
+    # 配置路径优先级：--config > MAJIECODE_CONFIG 环境变量 > 当前目录 config.yaml
+    config_path = args.config or os.environ.get("MAJIECODE_CONFIG") or "config.yaml"
+
     # 装配：加载配置 → 选供应商 → 建 provider 与 session
     try:
-        app_cfg = load_config(args.config)
+        app_cfg = load_config(config_path)
         cfg = app_cfg.select(args.provider)
         provider = create_provider(cfg)
     except ConfigError as e:

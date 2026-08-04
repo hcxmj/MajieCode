@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# MajieCode 全局启动器：从任意目录运行 `majiecode` 即可。
+# 用法：
+#   majiecode                       # 用项目 config.yaml 的 default 供应商
+#   majiecode --provider openai     # 传参透传
+#   DEEPSEEK_API_KEY=xxx majiecode  # 前置环境变量照常生效
+set -euo pipefail
+
+# 项目根目录（本脚本位于 <项目>/bin/ 下）
+PROJECT_DIR="$(cd "$(dirname "$(readlink "${BASH_SOURCE[0]}" || echo "${BASH_SOURCE[0]}")")/.." && pwd)"
+
+PY="${MAJIECODE_PYTHON:-$PROJECT_DIR/.venv/bin/python}"
+# 未显式指定配置时，默认用项目根目录的 config.yaml
+export MAJIECODE_CONFIG="${MAJIECODE_CONFIG:-$PROJECT_DIR/config.yaml}"
+# 让 python -m majiecode 从任意目录都能找到包
+export PYTHONPATH="$PROJECT_DIR${PYTHONPATH:+:$PYTHONPATH}"
+
+exec "$PY" -m majiecode "$@"
