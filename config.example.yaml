@@ -1,0 +1,46 @@
+# MajieCode 配置样例
+# 复制为 config.yaml 后按需修改；config.yaml 已被 .gitignore 忽略。
+#
+# 字段说明：
+#   name      供应商标识名（用于区分多个配置，也用于 --provider 指定）
+#   protocol  协议族：openai（兼容 DeepSeek/Qwen/豆包/MiniMax/GLM/OpenAI）或 anthropic
+#   model     模型名
+#   base_url  请求地址
+#   api_key   认证密钥，支持 ${ENV_VAR} 环境变量插值，也可直接写明文
+#   thinking  是否启用扩展思考（可选，默认 false）
+
+# 启动时默认使用的供应商 name
+default: deepseek
+
+providers:
+  - name: deepseek
+    protocol: openai
+    model: deepseek-chat
+    base_url: https://api.deepseek.com
+    api_key: ${DEEPSEEK_API_KEY}
+
+  - name: qwen
+    protocol: openai
+    model: qwen-max
+    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    api_key: ${QWEN_API_KEY}
+    thinking: true
+
+  - name: glm
+    protocol: openai
+    model: glm-4-plus
+    base_url: https://open.bigmodel.cn/api/paas/v4
+    api_key: ${GLM_API_KEY}
+
+  - name: openai
+    protocol: openai
+    model: gpt-4o-mini
+    base_url: https://api.openai.com/v1
+    api_key: ${OPENAI_API_KEY}
+
+  - name: claude
+    protocol: anthropic
+    model: claude-sonnet-4-5
+    base_url: https://api.anthropic.com
+    api_key: ${ANTHROPIC_API_KEY}
+    thinking: true
