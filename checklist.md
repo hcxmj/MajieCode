@@ -1,30 +1,31 @@
-# MajieCode 交互式对话终端 Checklist
+# MajieCode 工具系统 Checklist
 
 > 每一项通过运行代码或观察行为来验证，聚焦系统行为。
 
 ## 实现完整性
-- [x] config 模块可加载 YAML 并选出供应商（证据：临时 YAML，`select(None)` 返回 default 条目 ds）
-- [x] `${ENV}` 插值生效（证据：`MJ_TEST_KEY=secret123` 时 api_key 被替换为 secret123）
-- [x] session 历史管理正确（证据：加两轮后含 system+user+assistant；`clear` 后仅剩 system）
-- [x] `create_provider` 按 protocol 分派（证据：openai/anthropic 返回对应实例，非法值抛「未知协议」）
-- [x] tui 三种 style 区分渲染（证据：喂 thinking/text/error 事件，分别以思考中/正文/红色错误渲染）
+- [x] 工具抽象可用：实例化任一工具能读到 name/description/parameters，input_schema() 生成合法 JSON Schema。（AC1）
+- [x] ToolResult：success/fail 与 to_model_text() 行为正确（fail('x') → 错误：x）。（AC11）
+- [x] 读文件：读工作目录内文本返回内容；读不存在路径返回结构化失败而非崩溃。（AC3）
+- [x] 写文件：写入含新建子目录的新路径文件被创建且内容正确；覆盖生效。（AC4）
+- [x] 改文件三态：唯一匹配替换成功；无匹配「未匹配」；多处「匹配多处」，失败均不改文件。（AC5）
+- [x] 执行命令：返回 stdout/stderr/退出码；sleep + 小 timeout 返回超时失败。（AC6）
+- [x] 找文件：glob **/*.py 列出 py 文件；无匹配返回提示而非报错。（AC7）
+- [x] 搜内容：grep 返回「路径:行号:行文本」；无命中返回提示。（AC8）
 
 ## 集成
-- [x] cli 装配链路打通（证据：`python -m majiecode --help` 正常输出）
-- [x] OpenAIProvider 真实流式返回（证据：用户关代理后 DeepSeek 端到端验证正常，逐片段出现 text）
-- [ ] AnthropicProvider 扩展思考（未验证：本机无 ANTHROPIC_API_KEY；已通过工厂分派与代码审查，用法依 SDK 官方文档）
-- [x] 所有公开接口被 cli 主循环真实调用（证据：DeepSeek 一次完整对话跑通）
+- [x] 注册中心按名查找：build_default_registry 后 6 个工具 get 均非空。（AC1）
+- [x] 两族导出：to_openai_schema 每项含 type/function{name,description,parameters}；to_anthropic_schema 每项含 name/description/input_schema；均 6 项。（AC2）
+- [x] 富消息回灌：add_assistant(reply, tool_calls) 与 add_tool_result 后 messages() 依次出现带 tool_calls 的 assistant 与 role=tool 消息。（AC12）
+- [x] 流事件收集：含 tool_call 的 StreamEvent 序列经 render_stream，返回的 tool_calls 数量与内容正确。（AC10）
+- [x] 越界防护：../ 越界或绝对逃逸路径调用文件/命令工具均返回越界失败且未实际读写。（AC9）
+- [x] 未知工具容错：registry.get('不存在') 为 None，主循环返回「未知工具」失败而非崩溃。（AC11）
 
 ## 编译与运行
-- [x] `python -c "import majiecode"` 无报错（证据：输出版本号 0.1.0）
-- [x] 按 `requirements.txt` 在 `.venv` 安装后可 `python -m majiecode` 启动（证据：pip install 成功，启动显示状态行）
-- [x] 旧的 `tui/`、`agent/`、`bin/` 已删除（证据：`ls` 已无这些目录）
+- [x] 全部模块导入无错：import cli/tools.registry/两个 provider/tui 成功。
+- [x] 程序可启动：python -m majiecode 进入交互界面并接受输入。
+- [x] 向后兼容：不触发工具的普通提问仍能流式回复并入历史。
 
-## 端到端场景（用户手动，关代理后 DeepSeek）
-- [x] 场景1 多轮记忆（用户验证：符合预期）
-- [x] 场景2 流式输出（用户验证：逐字出现，符合预期）
-- [x] 场景3 控制命令 /help /clear /exit（用户验证：符合预期）
-- [x] 场景4 切换供应商 --provider（用户验证：符合预期）
-- [ ] 场景5 扩展思考（openai 族 reasoner 可自测；anthropic 因无 key 未验）
-- [x] 场景6 错误容错（证据：错误 key/超时时显示清晰错误且不崩溃，`❯` 恢复可继续输入）
-- [x] 场景7 密钥缺失（同错误处理路径，插值缺失后鉴权失败给出清晰错误）
+## 端到端场景（tmux）
+- [x] 场景1 读文件：请模型「读取 README.md 并概述」，观察到 read_file 调用 → 执行 → 回灌 → 结束，无崩溃。（AC13）
+- [x] 场景2 单轮即停：工具执行完后停在等待输入，未自动发起下一次模型请求。（AC12）
+- [x] 场景3 失败可恢复：edit 未匹配本地验证通过；tmux 中工具失败/API 超时后程序继续可用。（AC11/AC5）

@@ -1,106 +1,70 @@
-# MajieCode 交互式对话终端 Tasks
+# MajieCode 工具系统 Tasks
 
 ## 文件清单
 
 | 操作 | 文件 | 职责 |
 |------|------|------|
-| 新建 | `requirements.txt` | 依赖声明 |
-| 新建 | `.gitignore` | 忽略 config.yaml/.venv 等 |
-| 新建 | `majiecode/__init__.py`、`__main__.py` | 包与启动入口 |
-| 新建 | `majiecode/config.py` | 配置加载、插值、选择 |
-| 新建 | `majiecode/session.py` | Message、Session |
-| 新建 | `majiecode/providers/__init__.py` | Provider 抽象、StreamEvent、工厂 |
-| 新建 | `majiecode/providers/openai_provider.py` | OpenAI 兼容族适配器 |
-| 新建 | `majiecode/providers/anthropic_provider.py` | Anthropic 适配器 |
-| 新建 | `majiecode/tui.py` | 输入 + 流式渲染 + 命令 |
-| 新建 | `majiecode/cli.py` | 参数解析 + 装配 + 主循环 |
-| 新建 | `config.example.yaml` | 配置样例 |
-| 重写 | `README.md` | 使用说明 |
-| 删除 | `tui/`、`agent/`、`bin/` | 清理旧实现 |
+| 新建 | `majiecode/tools/__init__.py` | 导出工具系统主要类型 |
+| 新建 | `majiecode/tools/base.py` | ToolParam / ToolResult / Tool / ExecContext |
+| 新建 | `majiecode/tools/safety.py` | resolve_in_workdir / PathEscapeError |
+| 新建 | `majiecode/tools/filesystem.py` | ReadFileTool / WriteFileTool / EditFileTool |
+| 新建 | `majiecode/tools/shell.py` | RunCommandTool |
+| 新建 | `majiecode/tools/search.py` | GlobTool / GrepTool |
+| 新建 | `majiecode/tools/registry.py` | Registry / build_default_registry / 两族导出 |
+| 修改 | `majiecode/providers/__init__.py` | ToolCall、StreamEvent.tool_call、stream(tools=) |
+| 修改 | `majiecode/session.py` | 富 Message、add_assistant(tool_calls)、add_tool_result |
+| 修改 | `majiecode/providers/openai_provider.py` | tool_calls 解析/payload/请求带 tools |
+| 修改 | `majiecode/providers/anthropic_provider.py` | tool_use 解析/payload/请求带 tools |
+| 修改 | `majiecode/tui.py` | render_stream 返回 tool_calls、show_tool_* |
+| 修改 | `majiecode/cli.py` | 装配 registry、主循环执行工具+回灌 |
 
-## T1: 项目骨架与依赖
-**文件：** `requirements.txt`、`.gitignore`、`majiecode/__init__.py`、`majiecode/__main__.py`、`majiecode/providers/__init__.py`（占位）
-**依赖：** 无
-**步骤：**
-1. `requirements.txt` 写入 pyyaml、openai、anthropic、prompt_toolkit、rich。
-2. `.gitignore` 忽略 `config.yaml`、`.venv/`、`__pycache__/`、`*.pyc`。
-3. 建 `majiecode/` 与 `majiecode/providers/` 包目录及 `__init__.py`。
-4. `__main__.py` 调用 `cli.main()`（先留导入占位）。
-**验证：** `python -c "import majiecode"` 无报错。
+## T1: 工具抽象与结构化结果（tools/base.py）
+定义 ToolParam、ToolResult（success/fail/to_model_text）、ExecContext、Tool(ABC，run + input_schema)。
+验证：`ToolResult.fail('x').to_model_text()` == `错误：x`。
 
-## T2: config 模块
-**文件：** `majiecode/config.py`
-**依赖：** T1
-**步骤：**
-1. 定义 `ProviderConfig`（六字段，thinking 默认 False）、`AppConfig`（default + providers dict）。
-2. `load_config(path)`：读 YAML，遍历 providers，对 `api_key` 做 `${ENV}` 插值（缺失环境变量时保留标记以便后续报错）。
-3. `AppConfig.select(name)`：name 为空用 default；找不到抛清晰异常。
-4. 校验 default 指向存在、必填字段非空。
-**验证：** 写一个临时 YAML，`load_config` 后 `select(None)` 返回 default 供应商；`${ENV}` 被正确替换。
+## T2: 路径越界校验（tools/safety.py）
+PathEscapeError；resolve_in_workdir 用 realpath + commonpath 校验。
+验证：越界路径抛 PathEscapeError。
 
-## T3: session 模块
-**文件：** `majiecode/session.py`
-**依赖：** T1
-**步骤：**
-1. 定义 `Message`（role、content）。
-2. `Session(system_prompt)`：初始化含系统提示；`add_user`/`add_assistant`/`clear`/`messages()`。
-**验证：** 新建 Session，加两轮消息，`messages()` 返回含 system 的完整列表；`clear` 后仅剩 system。
+## T3: 文件工具（tools/filesystem.py，依赖 T1/T2）
+ReadFileTool / WriteFileTool / EditFileTool（唯一匹配替换三态）。
+验证：写→读一致；edit 唯一成功、无匹配/多处报错。
 
-## T4: providers 抽象层
-**文件：** `majiecode/providers/__init__.py`
-**依赖：** T1
-**步骤：**
-1. 定义 `StreamEvent`（kind、content）与抽象 `Provider.stream(messages)`。
-2. `create_provider(cfg)`：按 `protocol` 分派到两个适配器；未知协议抛异常。
-**验证：** `create_provider` 对 `openai`/`anthropic` 返回对应实例，非法值报错。
+## T4: 命令执行工具（tools/shell.py，依赖 T1）
+RunCommandTool：subprocess.run + 超时；返回退出码/stdout/stderr。
+验证：echo hi 含 hi；sleep 5 + timeout=1 返回超时。
 
-## T5: OpenAIProvider
-**文件：** `majiecode/providers/openai_provider.py`
-**依赖：** T2、T4
-**步骤：**
-1. 用 `base_url`/`api_key` 建 OpenAI 客户端。
-2. 流式请求，逐 chunk：`delta.content`→`text` 事件；`thinking` 开启且有 `delta.reasoning_content`→`thinking` 事件。
-3. 异常转 `error` 事件，最后发 `end`。
-**验证：** 用可用的 openai 兼容 key 提问，能看到流式 `text` 事件（可在 tmux 端到端阶段验）。
+## T5: 检索工具（tools/search.py，依赖 T1/T2）
+GlobTool / GrepTool（纯标准库，跳过二进制/超大，命中上限）。
+验证：**/*.py 列出文件；grep 命中含路径:行号:行文本；无命中返回提示。
 
-## T6: AnthropicProvider
-**文件：** `majiecode/providers/anthropic_provider.py`
-**依赖：** T2、T4
-**步骤：**
-1. 用 `base_url`/`api_key` 建 Anthropic 客户端。
-2. `messages.stream`，`thinking` 开启时传 `thinking={"type":"enabled","budget_tokens":1600}`（并满足 max_tokens 约束）。
-3. 事件 `thinking`→`thinking`、`text`→`text`；异常转 `error`，最后 `end`。
-**验证：** 用 Claude key 开 thinking 提问，先出 `thinking` 后出 `text`。
+## T6: 富消息模型（session.py，依赖 T7）
+Message 增 tool_calls/tool_call_id/name；add_assistant(tool_calls)、add_tool_result。
+验证：messages() 含带 tool_calls 的 assistant 与 role=tool 消息。
 
-## T7: tui 模块
-**文件：** `majiecode/tui.py`
-**依赖：** T3、T4
-**步骤：**
-1. `prompt_user()`：prompt_toolkit 读一行，带上下历史。
-2. `render_stream(events)`：逐事件用 Rich 打印，`thinking` 暗淡/斜体、`text` 正常、`error` 醒目；返回累积正文。
-3. `show_info/show_error/show_help`；命令识别 `/exit`、`/clear`、`/help`。
-**验证：** 手动喂一串 StreamEvent，观察不同 style 渲染；输入 `/help` 显示帮助文本。
+## T7: providers 类型扩展（providers/__init__.py）
+ToolCall；StreamEvent.tool_call；Provider.stream(messages, tools=None)。
+验证：构造 StreamEvent('tool_call', tool_call=ToolCall(...)) 可读 name。
 
-## T8: cli 主循环
-**文件：** `majiecode/cli.py`
-**依赖：** T2、T5、T6、T7
-**步骤：**
-1. argparse：`--config`（默认 `config.yaml`）、`--provider`。
-2. 装配：load_config → select → create_provider → Session。
-3. 主循环：prompt_user → 命令分支 / 调用 provider.stream → render_stream → add_assistant；顶层 try 兜底。
-4. 启动打印当前供应商/模型。
-**验证：** `python -m majiecode --help` 正常；配置就绪时能进入交互界面。
+## T8: OpenAI 族工具支持（openai_provider.py，依赖 T6/T7）
+payload 构造（assistant.tool_calls / role=tool）；请求带 tools；按 index 拼接 delta.tool_calls；流末产出 ToolCall。
+验证：编译通过；端到端见 checklist。
 
-## T9: 配置样例、文档与清理
-**文件：** `config.example.yaml`、`README.md`；删除 `tui/`、`agent/`、`bin/`
-**依赖：** T8
-**步骤：**
-1. `config.example.yaml`：写 default + 两族示例（含 `${ENV}` 用法、thinking 开关）。
-2. 重写 `README.md`：安装、配置、启动、命令、切换供应商说明。
-3. 删除旧的 `tui/`、`agent/`、`bin/`。
-**验证：** 按 README 从 `config.example.yaml` 复制出 `config.yaml` 可启动。
+## T9: Anthropic 族工具支持（anthropic_provider.py，依赖 T6/T7）
+payload 构造（tool_use / tool_result block）；请求带 tools；content_block 事件累积 partial_json 并产出 ToolCall。
+验证：编译通过。
+
+## T10: TUI 展示（tui.py，依赖 T7）
+render_stream 返回 (text, tool_calls)；show_tool_call、show_tool_result。
+验证：喂含 tool_call 的事件，返回 tool_calls 正确。
+
+## T11: 注册中心（tools/registry.py + __init__.py，依赖 T1/T3/T4/T5）
+Registry（register/get/all、两族导出）；build_default_registry 登记 6 工具。
+验证：get 6 个工具非空；两族 schema 各 6 项、字段正确。
+
+## T12: CLI 接入（cli.py，依赖 T10/T11/T6）
+ExecContext(os.getcwd()) + registry；主循环按 protocol 选 tools，执行工具、回灌、展示、单轮即停。
+验证：`python -m majiecode` 启动无报错；端到端见 checklist。
 
 ## 执行顺序
-```
-T1 → T2 → T3 → T4 → {T5, T6, T7} → T8 → T9
-```
+T1 → T2 → T7 → T6 → T3 → T4 → T5 → T8 → T9 → T10 → T11 → T12。

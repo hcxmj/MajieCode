@@ -1,23 +1,34 @@
-"""providers 包：统一供应商接口、流式事件与适配器工厂。"""
+"""providers 包：统一供应商接口、流式事件、工具调用与适配器工厂。"""
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from majiecode.config import ProviderConfig
 from majiecode.session import Message
 
 
 @dataclass
+class ToolCall:
+    """一次完整的工具调用（JSON 参数碎片已拼接解析）。"""
+
+    id: str
+    name: str
+    arguments: dict = field(default_factory=dict)
+
+
+@dataclass
 class StreamEvent:
     """供应商统一输出的流式事件。
 
-    kind: thinking / text / error / end
+    kind: thinking / text / tool_call / error / end
+    tool_call 仅在 kind == "tool_call" 时有值。
     """
 
     kind: str
     content: str = ""
+    tool_call: "ToolCall | None" = None
 
 
 class Provider(ABC):
@@ -27,8 +38,10 @@ class Provider(ABC):
         self.config = config
 
     @abstractmethod
-    def stream(self, messages: list[Message]) -> Iterator[StreamEvent]:
-        """给定对话历史，返回流式事件迭代器。"""
+    def stream(
+        self, messages: list[Message], tools: list[dict] | None = None
+    ) -> Iterator[StreamEvent]:
+        """给定对话历史与可选工具声明，返回流式事件迭代器。"""
         raise NotImplementedError
 
 

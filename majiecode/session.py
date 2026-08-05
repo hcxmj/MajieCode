@@ -6,10 +6,18 @@ from dataclasses import dataclass
 
 @dataclass
 class Message:
-    """一条对话消息。"""
+    """一条对话消息。
 
-    role: str  # system / user / assistant
+    普通消息只用 role/content；工具交互时：
+    - assistant 发起调用：tool_calls 承载本轮工具调用列表；
+    - role="tool" 结果：tool_call_id 指明对应调用，name 为工具名。
+    """
+
+    role: str  # system / user / assistant / tool
     content: str
+    tool_calls: list | None = None
+    tool_call_id: str | None = None
+    name: str | None = None
 
 
 class Session:
@@ -22,8 +30,14 @@ class Session:
     def add_user(self, content: str) -> None:
         self._messages.append(Message("user", content))
 
-    def add_assistant(self, content: str) -> None:
-        self._messages.append(Message("assistant", content))
+    def add_assistant(self, content: str, tool_calls: list | None = None) -> None:
+        self._messages.append(Message("assistant", content, tool_calls=tool_calls))
+
+    def add_tool_result(self, tool_call_id: str, name: str, output: str) -> None:
+        """追加一条工具执行结果消息（role="tool"）。"""
+        self._messages.append(
+            Message("tool", output, tool_call_id=tool_call_id, name=name)
+        )
 
     def clear(self) -> None:
         """清空历史，仅保留系统提示。"""
